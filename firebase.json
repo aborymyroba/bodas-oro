@@ -1,16 +1,14 @@
 {
   "hosting": {
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
     ],
     "headers": [
       {
-        "source": "**/*.@(jpg|jpeg|png|gif|webp|avif|svg)",
+        "source": "**/*.@(avif|webp|jpg|jpeg|png|gif|svg)",
         "headers": [
           {
             "key": "Cache-Control",
@@ -19,7 +17,7 @@
         ]
       },
       {
-        "source": "**/*.@(css|js)",
+        "source": "/_astro/**",
         "headers": [
           {
             "key": "Cache-Control",
