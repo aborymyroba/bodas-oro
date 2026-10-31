@@ -1,5 +1,5 @@
 ---
-import { Picture } from 'astro:assets';
+import { Picture, getImage } from 'astro:assets';
 import Layout from '../layouts/Layout.astro';
 
 const title = 'Bodas de Oro — 10 de octubre 2026';
@@ -8,12 +8,23 @@ const description = 'Galería de fotos de las bodas de oro del 10 de octubre de 
 // TODO: reemplazar con los nombres de los protagonistas cuando se confirmen.
 const nombres = '';
 
-// Una de cada cinco fotos ocupa el ancho completo; las demás van de a dos.
+// Una de cada cinco fotos ocupa una fila propia a ancho completo.
 const CADA_ANCHO_COMPLETO = 5;
+
+// Ancho máximo de la copia del visor. Nunca se amplía más allá del original:
+// por debajo de 1300 px el archivo original ya es el techo de resolución.
+const ZOOM_MAX = 2400;
+
+// Métricas del grid justificado (ancho útil del contenedor, separación,
+// altura mínima de fila y ancho mínimo por foto para que ninguna quede diminuta).
+const ANCHO = 1280;
+const GAP = 24;
+const H_MIN = 300;
+const W_MIN = 300;
 
 const modules = import.meta.glob('../assets/fotos/*.{jpg,png}', { eager: true });
 
-const fotos = Object.entries(modules)
+const base = Object.entries(modules)
   .map(([path, mod]) => {
     const meta = mod.default as ImageMetadata;
     const archivo = path.split('/').pop() ?? '';
@@ -23,9 +34,63 @@ const fotos = Object.entries(modules)
   .map((foto, index) => ({
     ...foto,
     numero: index + 1,
-    fullWidth: index % CADA_ANCHO_COMPLETO === 0,
+    // La relación de aspecto ya viene corregida por la orientación EXIF.
+    ar: foto.meta.width / foto.meta.height,
+    destacado: index % CADA_ANCHO_COMPLETO === 0,
   }));
 
+// Reparto en filas justificadas: cada fila se escala hasta llenar el ancho y
+// todas las fotos de la fila quedan con la misma altura.
+type Item = (typeof base)[number] & { ancho?: number };
+
+function justificar(items: Item[]): Item[] {
+  const suma = items.reduce((acc, item) => acc + item.ar, 0);
+  const k = (ANCHO - GAP * (items.length - 1)) / suma;
+  return items.map((item) => ({ ...item, ancho: Math.round(item.ar * k) }));
+}
+
+const filas: { items: Item[]; destacado: boolean }[] = [];
+let buffer: Item[] = [];
+
+for (const item of base) {
+  if (item.destacado) {
+    if (buffer.length) filas.push({ items: justificar(buffer), destacado: false });
+    filas.push({ items: [{ ...item, ancho: ANCHO }], destacado: true });
+    buffer = [];
+    continue;
+  }
+
+  const suma = buffer.reduce((acc, i) => acc + i.ar, 0);
+  const sumaNueva = suma + item.ar;
+  const h = (ANCHO - GAP * buffer.length) / sumaNueva;
+  const k = (ANCHO - GAP * buffer.length) / sumaNueva;
+  const anchoMinimo = Math.min(
+    ...buffer.map((i) => i.ar * k),
+    item.ar * k
+  );
+  if (buffer.length && (h < H_MIN || anchoMinimo < W_MIN)) {
+    filas.push({ items: justificar(buffer), destacado: false });
+    buffer = [item];
+  } else {
+    buffer.push(item);
+  }
+}
+if (buffer.length) filas.push({ items: justificar(buffer), destacado: false });
+
+// Copia para el visor, generada en build y cargada solo al abrir la foto.
+const fotos = await Promise.all(
+  base.map(async (foto) => {
+    const zoom = await getImage({
+      src: foto.meta,
+      format: 'webp',
+      width: Math.min(foto.meta.width, ZOOM_MAX),
+      quality: 92,
+    });
+    return { ...foto, zoom: zoom.src };
+  })
+);
+
+const porNumero = new Map(fotos.map((f) => [f.numero, f]));
 const ogImage = fotos[0]?.meta.src ?? '/favicon.ico';
 ---
 
@@ -47,28 +112,187 @@ const ogImage = fotos[0]?.meta.src ?? '/favicon.ico';
 
   <!-- Galería -->
   <section class="px-6 pb-24">
-    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+    <div class="max-w-7xl mx-auto flex flex-col gap-6">
       {
-        fotos.map((foto) => (
-          <figure class={foto.fullWidth ? 'md:col-span-2' : undefined}>
-            <Picture
-              src={foto.meta}
-              alt={`Foto ${foto.numero} de las bodas de oro`}
-              formats={['avif']}
-              fallbackFormat="webp"
-              widths={foto.fullWidth ? [640, 1000, 1264, 1800, 2464] : [480, 768, 1200]}
-              sizes={
-                foto.fullWidth
-                  ? '(max-width: 768px) calc(100vw - 3rem), 1232px'
-                  : '(max-width: 768px) calc(100vw - 3rem), 604px'
-              }
-              loading={foto.numero <= 2 ? 'eager' : 'lazy'}
-              decoding="async"
-              class="block w-full h-auto"
-            />
-          </figure>
+        filas.map((fila) => (
+          <div
+            class={`galeria-fila ${fila.destacado ? 'galeria-fila--destacada' : ''}`}
+            style={`--gap: ${GAP}px`}
+          >
+            {fila.items.map((item) => {
+              const foto = porNumero.get(item.numero)!;
+              return (
+                <figure style={`--ar: ${item.ar}`}>
+                  <button
+                    type="button"
+                    class="zoom-trigger relative block w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
+                    data-zoom={foto.zoom}
+                    data-alt={`Foto ${foto.numero} de las bodas de oro`}
+                    data-numero={foto.numero}
+                    aria-label={`Ampliar la foto ${foto.numero}`}
+                  >
+                    <Picture
+                      src={foto.meta}
+                      alt={`Foto ${foto.numero} de las bodas de oro`}
+                      formats={['avif']}
+                      fallbackFormat="webp"
+                      widths={[480, 768, 1200, 1600, 2000]}
+                      sizes={
+                        fila.destacado
+                          ? '(max-width: 768px) calc(100vw - 3rem), 1280px'
+                          : `(max-width: 768px) calc(100vw - 3rem), ${item.ancho}px`
+                      }
+                      loading={foto.numero <= 3 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      class="block w-full h-auto"
+                    />
+                    <span class="zoom-hint" aria-hidden="true">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="7" />
+                        <path d="m20 20-3.5-3.5M11 8v6M8 11h6" />
+                      </svg>
+                    </span>
+                  </button>
+                </figure>
+              );
+            })}
+          </div>
         ))
       }
     </div>
   </section>
+
+  <!-- Visor -->
+  <div
+    id="lightbox"
+    class="lightbox"
+    data-open="false"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Visor de fotos"
+  >
+    <div class="lightbox__backdrop" data-close></div>
+    <div class="lightbox__stage" data-stage>
+      <img id="lightbox-img" class="lightbox__img" alt="" data-zoomed="0" />
+    </div>
+    <button type="button" class="lightbox__btn lightbox__close" data-close aria-label="Cerrar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+    </button>
+    <button type="button" class="lightbox__btn lightbox__prev" data-prev aria-label="Foto anterior">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+    </button>
+    <button type="button" class="lightbox__btn lightbox__next" data-next aria-label="Foto siguiente">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+    </button>
+    <p id="lightbox-caption" class="lightbox__caption"></p>
+  </div>
+
+  <script>
+    const lightbox = document.getElementById('lightbox');
+    const imagen = document.getElementById('lightbox-img');
+    const caption = document.getElementById('lightbox-caption');
+    const stage = document.querySelector('[data-stage]');
+    const disparadores = Array.from(document.querySelectorAll<HTMLElement>('[data-zoom]')).filter(
+      (el) => el.tagName === 'BUTTON'
+    );
+
+    let indice = 0;
+    let ultimoFoco: HTMLElement | null = null;
+
+    function mostrar(i: number) {
+      const disparo = disparadores[i];
+      if (!disparo) return;
+      indice = i;
+      const src = disparo.dataset.zoom;
+      const alt = disparo.dataset.alt ?? '';
+      const numero = disparo.dataset.numero ?? String(i + 1);
+
+      imagen!.src = src!;
+      imagen!.alt = alt;
+      imagen!.dataset.zoomed = '0';
+      caption!.textContent = `Foto ${numero} de ${disparadores.length}`;
+      stage!.scrollTop = 0;
+      stage!.scrollLeft = 0;
+
+      // Precarga la vecina para que la navegación sea inmediata.
+      const vecina = disparadores[(i + 1) % disparadores.length];
+      if (vecina?.dataset.zoom) new Image().src = vecina.dataset.zoom;
+    }
+
+    function abrir(i: number) {
+      ultimoFoco = document.activeElement as HTMLElement;
+      mostrar(i);
+      lightbox!.setAttribute('data-open', 'true');
+      document.body.style.overflow = 'hidden';
+      lightbox!.querySelector<HTMLElement>('[data-close]')?.focus();
+    }
+
+    function cerrar() {
+      lightbox!.setAttribute('data-open', 'false');
+      document.body.style.overflow = '';
+      imagen!.removeAttribute('src');
+      ultimoFoco?.focus();
+    }
+
+    function alternarZoom() {
+      const activo = imagen!.dataset.zoomed === '1';
+      imagen!.dataset.zoomed = activo ? '0' : '1';
+      if (!activo) {
+        stage!.scrollLeft = (imagen!.scrollWidth - stage!.clientWidth) / 2;
+        stage!.scrollTop = (imagen!.scrollHeight - stage!.clientHeight) / 2;
+      }
+    }
+
+    disparadores.forEach((disparo, i) => {
+      disparo.addEventListener('click', () => abrir(i));
+    });
+
+    lightbox!.querySelectorAll('[data-close]').forEach((el) => {
+      el.addEventListener('click', cerrar);
+    });
+
+    lightbox!.querySelector('[data-prev]')?.addEventListener('click', () => {
+      mostrar((indice - 1 + disparadores.length) % disparadores.length);
+    });
+
+    lightbox!.querySelector('[data-next]')?.addEventListener('click', () => {
+      mostrar((indice + 1) % disparadores.length);
+    });
+
+    imagen!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      alternarZoom();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (lightbox!.getAttribute('data-open') !== 'true') return;
+      if (e.key === 'Escape') cerrar();
+      if (e.key === 'ArrowLeft')
+        mostrar((indice - 1 + disparadores.length) % disparadores.length);
+      if (e.key === 'ArrowRight') mostrar((indice + 1) % disparadores.length);
+    });
+
+    // Deslizar en pantallas táctiles
+    let xInicial = 0;
+    let yInicial = 0;
+    stage!.addEventListener(
+      'touchstart',
+      (e) => {
+        xInicial = e.changedTouches[0].clientX;
+        yInicial = e.changedTouches[0].clientY;
+      },
+      { passive: true }
+    );
+    stage!.addEventListener(
+      'touchend',
+      (e) => {
+        const dx = e.changedTouches[0].clientX - xInicial;
+        const dy = e.changedTouches[0].clientY - yInicial;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+          mostrar((indice + (dx < 0 ? 1 : -1) + disparadores.length) % disparadores.length);
+        }
+      },
+      { passive: true }
+    );
+  </script>
 </Layout>
