@@ -1,0 +1,74 @@
+---
+import { Picture } from 'astro:assets';
+import Layout from '../layouts/Layout.astro';
+
+const title = 'Bodas de Oro — 10 de octubre 2026';
+const description = 'Galería de fotos de las bodas de oro del 10 de octubre de 2026.';
+
+// TODO: reemplazar con los nombres de los protagonistas cuando se confirmen.
+const nombres = '';
+
+// Una de cada cinco fotos ocupa el ancho completo; las demás van de a dos.
+const CADA_ANCHO_COMPLETO = 5;
+
+const modules = import.meta.glob('../assets/fotos/*.{jpg,png}', { eager: true });
+
+const fotos = Object.entries(modules)
+  .map(([path, mod]) => {
+    const meta = mod.default as ImageMetadata;
+    const archivo = path.split('/').pop() ?? '';
+    return { meta, posicion: Number.parseInt(archivo, 10) };
+  })
+  .sort((a, b) => a.posicion - b.posicion)
+  .map((foto, index) => ({
+    ...foto,
+    numero: index + 1,
+    fullWidth: index % CADA_ANCHO_COMPLETO === 0,
+  }));
+
+const ogImage = fotos[0]?.meta.src ?? '/favicon.ico';
+---
+
+<Layout title={title} description={description} ogImage={ogImage}>
+  <!-- Encabezado -->
+  <header class="pt-28 pb-14 px-6 text-center">
+    <h1 class="font-display text-4xl md:text-6xl tracking-[0.18em] uppercase text-foreground">
+      Bodas de Oro
+    </h1>
+    <p class="font-display text-base md:text-xl tracking-[0.22em] uppercase text-foreground/60 mt-6">
+      10 de octubre 2026
+    </p>
+    {
+      nombres && (
+        <p class="font-body italic text-lg md:text-2xl text-foreground/70 mt-8">{nombres}</p>
+      )
+    }
+  </header>
+
+  <!-- Galería -->
+  <section class="px-6 pb-24">
+    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+      {
+        fotos.map((foto) => (
+          <figure class={foto.fullWidth ? 'md:col-span-2' : undefined}>
+            <Picture
+              src={foto.meta}
+              alt={`Foto ${foto.numero} de las bodas de oro`}
+              formats={['avif']}
+              fallbackFormat="webp"
+              widths={foto.fullWidth ? [640, 1000, 1264, 1800, 2464] : [480, 768, 1200]}
+              sizes={
+                foto.fullWidth
+                  ? '(max-width: 768px) calc(100vw - 3rem), 1232px'
+                  : '(max-width: 768px) calc(100vw - 3rem), 604px'
+              }
+              loading={foto.numero <= 2 ? 'eager' : 'lazy'}
+              decoding="async"
+              class="block w-full h-auto"
+            />
+          </figure>
+        ))
+      }
+    </div>
+  </section>
+</Layout>
