@@ -5,7 +5,7 @@ import sitemap from '@astrojs/sitemap';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://bodas-oro.web.app',
+  site: 'https://bodas-oro-2026.web.app',
   vite: {
     plugins: [tailwindcss()],
   },

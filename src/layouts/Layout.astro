@@ -15,7 +15,7 @@ const {
   ogType = 'website',
 } = Astro.props;
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://bodas-oro.web.app');
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://bodas-oro-2026.web.app');
 ---
 
 <html lang="es">
@@ -29,7 +29,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://bodas-or
     <!-- Open Graph -->
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={new URL(ogImage, Astro.site ?? 'https://bodas-oro.web.app').href} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site ?? 'https://bodas-oro-2026.web.app').href} />
     <meta property="og:url" content={canonicalURL.href} />
     <meta property="og:type" content={ogType} />
     <meta property="og:locale" content="es_ES" />
@@ -39,7 +39,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://bodas-or
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={new URL(ogImage, Astro.site ?? 'https://bodas-oro.web.app').href} />
+    <meta name="twitter:image" content={new URL(ogImage, Astro.site ?? 'https://bodas-oro-2026.web.app').href} />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -58,7 +58,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://bodas-or
       "@context": "https://schema.org",
       "@type": "ImageGallery",
       "name": "Bodas de Oro - 10 de octubre 2026",
-      "url": "https://bodas-oro.web.app",
+      "url": "https://bodas-oro-2026.web.app",
       "description": "Galería de fotos de las bodas de oro",
     })} />
   </body>
